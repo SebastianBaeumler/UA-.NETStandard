@@ -32,7 +32,7 @@ namespace Opc.Ua
             AnonymousIdentityToken token = new AnonymousIdentityToken();
             Initialize(token);
         }
-        
+
         /// <summary>
         /// Initializes the object with a username and password.
         /// </summary>
@@ -54,13 +54,13 @@ namespace Opc.Ua
         {
             Initialize(issuedToken);
         }
-        
+
         /// <summary>
         /// Initializes the object with an X509 certificate identifier
         /// </summary>
         public UserIdentity(CertificateIdentifier certificateId)
         {
-            if (certificateId == null) throw new ArgumentNullException("certificateId");
+            if (certificateId == null) throw new ArgumentNullException(nameof(certificateId));
 
             X509Certificate2 certificate = certificateId.Find().Result;
             if (certificate != null)
@@ -74,7 +74,7 @@ namespace Opc.Ua
         /// </summary>
         public UserIdentity(X509Certificate2 certificate)
         {
-            if (certificate == null) throw new ArgumentNullException("certificate");
+            if (certificate == null) throw new ArgumentNullException(nameof(certificate));
             Initialize(certificate);
         }
 
@@ -88,7 +88,7 @@ namespace Opc.Ua
         }
         #endregion
 
-        #region IUserIdentity Methods
+        #region IUserIdentity Members
         /// <summary>
         /// Gets or sets the UserIdentityToken PolicyId associated with the UserIdentity.
         /// </summary>
@@ -100,9 +100,7 @@ namespace Opc.Ua
             get { return m_token.PolicyId; }
             set { m_token.PolicyId = value; }
         }
-        #endregion
 
-        #region IUserIdentity Methods
         /// <summary cref="IUserIdentity.DisplayName" />
         public string DisplayName
         {
@@ -114,20 +112,29 @@ namespace Opc.Ua
         {
             get { return m_tokenType; }
         }
-        
+
         /// <summary cref="IUserIdentity.IssuedTokenType" />
         public XmlQualifiedName IssuedTokenType
         {
             get { return m_issuedTokenType; }
-        }        
+        }
 
         /// <summary cref="IUserIdentity.SupportsSignatures" />
         public bool SupportsSignatures
         {
-            get  
+            get
             {
-               return false; 
+                return false;
             }
+        }
+
+        /// <summary>
+        ///  Get or sets the list of granted role ids associated to the UserIdentity.
+        /// </summary>
+        public NodeIdCollection GrantedRoleIds
+        {
+            get { return m_grantedRoleIds; }
+            set { m_grantedRoleIds = value; }
         }
 
         /// <summary cref="IUserIdentity.GetIdentityToken" />
@@ -144,17 +151,17 @@ namespace Opc.Ua
             }
         }
         #endregion
-        
+
         #region Private Methods
         /// <summary>
         /// Initializes the object with a UA identity token
         /// </summary>
         private void Initialize(UserIdentityToken token)
         {
-            if (token == null) throw new ArgumentNullException("token");
-
+            if (token == null) throw new ArgumentNullException(nameof(token));
+            m_grantedRoleIds = new NodeIdCollection();
             m_token = token;
-  
+
             UserNameIdentityToken usernameToken = token as UserNameIdentityToken;
             if (usernameToken != null)
             {
@@ -188,7 +195,7 @@ namespace Opc.Ua
                 {
                     if (issuedToken.DecryptedTokenData == null || issuedToken.DecryptedTokenData.Length == 0)
                     {
-                        throw new ArgumentException("JSON Web Token has no data associated with it.", "token");
+                        throw new ArgumentException("JSON Web Token has no data associated with it.", nameof(token));
                     }
 
                     m_tokenType = UserTokenType.IssuedToken;
@@ -210,8 +217,8 @@ namespace Opc.Ua
                 m_displayName = "Anonymous";
                 return;
             }
-  
-            throw new ArgumentException("Unrecognized UA user identity token type.", "token");
+
+            throw new ArgumentException("Unrecognized UA user identity token type.", nameof(token));
         }
 
         /// <summary>
@@ -231,6 +238,7 @@ namespace Opc.Ua
         private string m_displayName;
         private UserTokenType m_tokenType;
         private XmlQualifiedName m_issuedTokenType;
+        private NodeIdCollection m_grantedRoleIds;
         #endregion
     }
 

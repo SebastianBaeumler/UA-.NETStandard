@@ -11,8 +11,7 @@
 */
 
 using System;
-using System.Collections.Generic;
-using System.Text;
+using Opc.Ua.Bindings;
 
 namespace Opc.Ua
 {
@@ -26,7 +25,6 @@ namespace Opc.Ua
         /// </summary>
         /// <returns> the transport channel</returns>
         ITransportChannel Create();
-
     }
 
     /// <summary>
@@ -55,6 +53,11 @@ namespace Opc.Ua
         ServiceMessageContext MessageContext { get; }
 
         /// <summary>
+        /// Gets the the channel's current security token.
+        /// </summary>
+        ChannelToken CurrentToken { get; }
+
+        /// <summary>
         /// Gets or sets the default timeout for requests send via the channel.
         /// </summary>
         int OperationTimeout { get; set; }
@@ -67,6 +70,13 @@ namespace Opc.Ua
         /// <exception cref="ServiceResultException">Thrown if any communication error occurs.</exception>
         void Initialize(
             Uri url,
+            TransportChannelSettings settings);
+
+        /// <summary>
+        /// Initializes a secure channel with the endpoint identified by the URL.
+        /// </summary>
+        void Initialize(
+            ITransportWaitingConnection connection,
             TransportChannelSettings settings);
 
         /// <summary>
@@ -84,7 +94,7 @@ namespace Opc.Ua
         /// <exception cref="ServiceResultException">Thrown if any communication error occurs.</exception>
         /// <seealso cref="Open"/>
         IAsyncResult BeginOpen(
-            AsyncCallback callback, 
+            AsyncCallback callback,
             object callbackData);
 
         /// <summary>
@@ -103,6 +113,16 @@ namespace Opc.Ua
         /// Calling this method will cause outstanding requests over the current secure channel to fail.
         /// </remarks>
         void Reconnect();
+
+        /// <summary>
+        /// Closes any existing secure channel and opens a new one.
+        /// </summary>
+        /// <param name="connection">The waiting reverse connection for the reconnect attempt.</param>
+        /// <exception cref="ServiceResultException">Thrown if any communication error occurs.</exception>
+        /// <remarks>
+        /// Calling this method will cause outstanding requests over the current secure channel to fail.
+        /// </remarks>
+        void Reconnect(ITransportWaitingConnection connection);
 
         /// <summary>
         /// Begins an asynchronous operation to close the existing secure channel and open a new one.
@@ -199,7 +219,7 @@ namespace Opc.Ua
         /// The channel supports Reconnect.
         /// </summary>
         Reconnect = 0x0004,
-        
+
         /// <summary>
         /// The channel supports asynchronous Reconnect.
         /// </summary>
@@ -213,6 +233,11 @@ namespace Opc.Ua
         /// <summary>
         /// The channel supports asynchronous SendRequest.
         /// </summary>
-        BeginSendRequest = 0x0020
+        BeginSendRequest = 0x0020,
+
+        /// <summary>
+        /// The channel supports Reconnect.
+        /// </summary>
+        ReverseConnect = 0x0040
     }
 }

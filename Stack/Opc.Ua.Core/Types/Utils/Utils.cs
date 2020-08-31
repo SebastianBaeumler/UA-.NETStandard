@@ -38,6 +38,11 @@ namespace Opc.Ua
         /// <summary>
         /// The URI scheme for the HTTPS protocol. 
         /// </summary>
+        public const string UriSchemeHttp = "http";
+
+        /// <summary>
+        /// The URI scheme for the HTTPS protocol. 
+        /// </summary>
         public const string UriSchemeHttps = "https";
 
         /// <summary>
@@ -713,7 +718,7 @@ namespace Opc.Ua
 
                 if (throwOnError)
                 {
-                    throw e;
+                    throw;
                 }
 
                 return filePath;
@@ -877,7 +882,27 @@ namespace Opc.Ua
             get { return s_TimeBase; }
         }
 
-        private static readonly DateTime s_TimeBase = new DateTime(1601, 1, 1);
+        private static readonly DateTime s_TimeBase = new DateTime(1601, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        /// <summary>
+        /// Normalize a DateTime to Opc Ua UniversalTime.
+        /// </summary>
+        public static DateTime ToOpcUaUniversalTime(DateTime value)
+        {
+            if (value <= DateTime.MinValue)
+            {
+                return DateTime.MinValue;
+            }
+            if (value >= DateTime.MaxValue)
+            {
+                return DateTime.MaxValue;
+            }
+            if (value.Kind != DateTimeKind.Utc)
+            {
+                return value.ToUniversalTime();
+            }
+            return value;
+        }
 
         /// <summary>
         /// Returns an absolute deadline for a timeout.
@@ -928,9 +953,7 @@ namespace Opc.Ua
             string domainName = null;
             try
             {
-#if !NETSTANDARD1_4 && !NETSTANDARD1_3
                 domainName = Dns.GetHostEntry("localhost").HostName;
-#endif
             }
             catch
             {
@@ -1902,6 +1925,12 @@ namespace Opc.Ua
                 return value1.Equals(value2);
             }
 
+            // check for DateTime objects
+            if (value1 is DateTime)
+            {
+                return (Utils.ToOpcUaUniversalTime((DateTime)value1).CompareTo(Utils.ToOpcUaUniversalTime((DateTime)value2))) == 0;
+            }
+
             // check for compareable objects.
             IComparable comparable1 = value1 as IComparable;
 
@@ -2048,7 +2077,7 @@ namespace Opc.Ua
             }
             else
             {
-                if (target.ToUpperInvariant() == pattern.ToUpperInvariant())
+                if (String.Equals(target, pattern, StringComparison.InvariantCultureIgnoreCase))
                 {
                     return true;
                 }
@@ -2321,7 +2350,7 @@ namespace Opc.Ua
                 catch (Exception ex)
                 {
                     Utils.Trace("Exception parsing extension: " + ex.Message);
-                    throw ex;
+                    throw;
                 }
                 finally
                 {
@@ -2618,7 +2647,7 @@ namespace Opc.Ua
             return result == 0;
         }
 
-        public class Nonce
+        public static class Nonce
         {
             static RandomNumberGenerator m_rng = RandomNumberGenerator.Create();
 
@@ -2631,6 +2660,71 @@ namespace Opc.Ua
                 m_rng.GetBytes(randomBytes);
                 return randomBytes;
             }
+
+            /// <summary>
+            /// Returns the length of the symmetric encryption key for a security policy.
+            /// </summary>
+            public static uint GetNonceLength(string securityPolicyUri)
+            {
+                switch (securityPolicyUri)
+                {
+                    case SecurityPolicies.Basic128Rsa15:
+                        {
+                            return 16;
+                        }
+
+                    case SecurityPolicies.Basic256:
+                    case SecurityPolicies.Basic256Sha256:
+                    case SecurityPolicies.Aes128_Sha256_RsaOaep:
+                    case SecurityPolicies.Aes256_Sha256_RsaPss:
+                        {
+                            return 32;
+                        }
+
+                    default:
+                    case SecurityPolicies.None:
+                        {
+                            return 0;
+                        }
+                }
+            }
+
+            /// <summary>
+            /// Validates the nonce for a message security mode and security policy.
+            /// </summary>
+            public static bool ValidateNonce(byte[] nonce, MessageSecurityMode securityMode, string securityPolicyUri)
+            {
+                return ValidateNonce(nonce, securityMode, GetNonceLength(securityPolicyUri));
+            }
+
+            /// <summary>
+            /// Validates the nonce for a message security mode and a minimum length.
+            /// </summary>
+            public static bool ValidateNonce(byte[] nonce, MessageSecurityMode securityMode, uint minNonceLength)
+            {
+                // no nonce needed for no security.
+                if (securityMode == MessageSecurityMode.None)
+                {
+                    return true;
+                }
+
+                // check the length.
+                if (nonce == null || nonce.Length < minNonceLength)
+                {
+                    return false;
+                }
+
+                // try to catch programming errors by rejecting nonces with all zeros.
+                for (int ii = 0; ii < nonce.Length; ii++)
+                {
+                    if (nonce[ii] != 0)
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
         }
 
         /// <summary>
@@ -2638,7 +2732,7 @@ namespace Opc.Ua
         /// </summary>
         public static byte[] PSHA1(byte[] secret, string label, byte[] data, int offset, int length)
         {
-            if (secret == null) throw new ArgumentNullException("secret");
+            if (secret == null) throw new ArgumentNullException(nameof(secret));
             // create the hmac.
             HMACSHA1 hmac = new HMACSHA1(secret);
             return PSHA(hmac, label, data, offset, length);
@@ -2649,7 +2743,7 @@ namespace Opc.Ua
         /// </summary>
         public static byte[] PSHA256(byte[] secret, string label, byte[] data, int offset, int length)
         {
-            if (secret == null) throw new ArgumentNullException("secret");
+            if (secret == null) throw new ArgumentNullException(nameof(secret));
             // create the hmac.
             HMACSHA256 hmac = new HMACSHA256(secret);
             return PSHA(hmac, label, data, offset, length);
@@ -2660,9 +2754,9 @@ namespace Opc.Ua
         /// </summary>
         private static byte[] PSHA(HMAC hmac, string label, byte[] data, int offset, int length)
         {
-            if (hmac == null) throw new ArgumentNullException("hmac");
-            if (offset < 0) throw new ArgumentOutOfRangeException("offset");
-            if (length < 0) throw new ArgumentOutOfRangeException("length");
+            if (hmac == null) throw new ArgumentNullException(nameof(hmac));
+            if (offset < 0) throw new ArgumentOutOfRangeException(nameof(offset));
+            if (length < 0) throw new ArgumentOutOfRangeException(nameof(length));
 
             byte[] seed = null;
 

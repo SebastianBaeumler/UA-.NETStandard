@@ -53,15 +53,8 @@ namespace Opc.Ua.Bindings
             MessageSecurityMode securityMode,
             string securityPolicyUri)
         {
-            if (bufferManager == null)
-            {
-                throw new ArgumentNullException(nameof(bufferManager));
-            }
-
-            if (quotas == null)
-            {
-                throw new ArgumentNullException(nameof(quotas));
-            }
+            if (bufferManager == null) throw new ArgumentNullException(nameof(bufferManager));
+            if (quotas == null) throw new ArgumentNullException(nameof(quotas));
 
             // create a unique contex if none provided.
             m_contextId = contextId;
@@ -79,10 +72,7 @@ namespace Opc.Ua.Bindings
 
             if (securityMode != MessageSecurityMode.None)
             {
-                if (serverCertificate == null)
-                {
-                    throw new ArgumentNullException(nameof(serverCertificate));
-                }
+                if (serverCertificate == null) throw new ArgumentNullException(nameof(serverCertificate));
 
                 if (serverCertificate.RawData.Length > TcpMessageLimits.MaxCertificateSize)
                 {
@@ -208,12 +198,8 @@ namespace Opc.Ua.Bindings
         /// </summary>
         protected void ChannelStateChanged(TcpChannelState state, ServiceResult reason)
         {
-            Task.Run(() =>
-            {
-                if (m_StateChanged != null)
-                {
-                    m_StateChanged(this, state, reason);
-                }
+            Task.Run(() => {
+                m_StateChanged?.Invoke(this, state, reason);
             });
         }
 
@@ -389,7 +375,6 @@ namespace Opc.Ua.Bindings
             lock (DataLock)
             {
                 ServiceResult error = ServiceResult.Good;
-
                 try
                 {
                     Utils.TraceDebug("Bytes written: {0}", e.BytesTransferred);
@@ -406,6 +391,11 @@ namespace Opc.Ua.Bindings
                 }
                 catch (Exception ex)
                 {
+                    if (ex is InvalidOperationException)
+                    {
+                        // suppress chained exception in HandleWriteComplete/ReturnBuffer
+                        e.BufferList = null;
+                    }
                     error = ServiceResult.Create(ex, StatusCodes.BadTcpInternalError, "Unexpected error during write operation.");
                     HandleWriteComplete((BufferCollection)e.BufferList, e.UserToken, e.BytesTransferred, error);
                 }
@@ -624,12 +614,13 @@ namespace Opc.Ua.Bindings
         protected internal IMessageSocket Socket
         {
             get { return m_socket; }
-
-            set
-            {
-                m_socket = value;
-            }
+            set { m_socket = value; }
         }
+
+        /// <summary>
+        /// Whether the client channel uses a reverse hello socket.
+        /// </summary>
+        protected internal bool ReverseSocket { get; set; }
 
         /// <summary>
         /// The buffer manager for the channel.

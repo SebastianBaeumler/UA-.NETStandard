@@ -112,12 +112,17 @@ public class CertificateFactory
 {
     #region Public Constants
     /// <summary>
-    /// The default certificate factory security parameter.
+    /// The default certificate factory security parameters.
     /// </summary>
-    public const ushort defaultKeySize = 2048;
-    public const ushort defaultHashSize = 256;
-    public const ushort defaultLifeTime = 12;
+    /// <remarks>
+    /// The security parameters may change over time,
+    /// so they are only readonly values, not constants.
+    /// </remarks>
+    public static readonly ushort DefaultKeySize = 2048;
+    public static readonly ushort DefaultHashSize = 256;
+    public static readonly ushort DefaultLifeTime = 12;
     #endregion
+
     #region Public Methods
     /// <summary>
     /// Creates a certificate from a buffer with DER encoded certificate.
@@ -152,7 +157,7 @@ public class CertificateFactory
             return null;
         }
 
-        lock (m_certificates)
+        lock (m_certificatesLock)
         {
             X509Certificate2 cachedCertificate = null;
 
@@ -296,9 +301,13 @@ public class CertificateFactory
 
             // Basic constraints
             BasicConstraints basicConstraints = new BasicConstraints(isCA);
-            if (pathLengthConstraint >= 0 && isCA)
+            if (isCA && pathLengthConstraint >= 0)
             {
                 basicConstraints = new BasicConstraints(pathLengthConstraint);
+            }
+            else if (!isCA && issuerCAKeyCert == null)
+            {   // self-signed
+                basicConstraints = new BasicConstraints(0);
             }
             cg.AddExtension(X509Extensions.BasicConstraints.Id, true, basicConstraints);
 
@@ -536,7 +545,11 @@ public class CertificateFactory
 
                 List<X509CRL> certCACrl = store.EnumerateCRLs(certCA, false);
 
-                var certificateCollection = new X509Certificate2Collection() { certificate };
+                var certificateCollection = new X509Certificate2Collection() { };
+                if (!isCACert)
+                {
+                    certificateCollection.Add(certificate);
+                }
                 updatedCRL = RevokeCertificate(certCAWithPrivateKey, certCACrl, certificateCollection);
 
                 store.AddCRL(updatedCRL);
@@ -549,9 +562,9 @@ public class CertificateFactory
                 store.Close();
             }
         }
-        catch (Exception e)
+        catch (Exception)
         {
-            throw e;
+            throw;
         }
         return updatedCRL;
     }
@@ -597,7 +610,7 @@ public class CertificateFactory
             AsymmetricKeyParameter signingKey = GetPrivateKeyParameter(issuerCertificate);
 
             ISignatureFactory signatureFactory =
-                    new Asn1SignatureFactory(GetRSAHashAlgorithm(defaultHashSize), signingKey, random);
+                    new Asn1SignatureFactory(GetRSAHashAlgorithm(DefaultHashSize), signingKey, random);
 
             X509V2CrlGenerator crlGen = new X509V2CrlGenerator();
             crlGen.SetIssuerDN(bcCertCA.SubjectDN);
@@ -670,7 +683,7 @@ public class CertificateFactory
             RsaKeyParameters publicKey = GetPublicKeyParameter(certificate);
 
             ISignatureFactory signatureFactory =
-                new Asn1SignatureFactory(GetRSAHashAlgorithm(defaultHashSize), signingKey, random);
+                new Asn1SignatureFactory(GetRSAHashAlgorithm(DefaultHashSize), signingKey, random);
 
             Asn1Set attributes = null;
             X509SubjectAltNameExtension alternateName = null;
@@ -829,7 +842,7 @@ public class CertificateFactory
     }
 
     /// <summary>
-    /// returns a byte array containing the cert in PEM format.
+    /// Returns a byte array containing the cert in PEM format.
     /// </summary>
     public static byte[] ExportCertificateAsPEM(X509Certificate2 certificate)
     {
@@ -848,7 +861,7 @@ public class CertificateFactory
     }
 
     /// <summary>
-    /// returns a byte array containing the private key in PEM format.
+    /// Returns a byte array containing the private key in PEM format.
     /// </summary>
     public static byte[] ExportPrivateKeyAsPEM(
         X509Certificate2 certificate
@@ -933,11 +946,11 @@ public class CertificateFactory
                 throw new CryptographicException("Don't know how to verify the public/private key pair.");
             }
         }
-        catch (Exception e)
+        catch (Exception)
         {
             if (throwOnError)
             {
-                throw e;
+                throw;
             }
         }
         finally
@@ -950,6 +963,24 @@ public class CertificateFactory
             }
         }
         return result;
+    }
+
+    /// <summary>
+    /// Returns the size of the public key and disposes RSA key.
+    /// </summary>
+    /// <param name="certificate">The certificate</param>
+    public static int GetRSAPublicKeySize(X509Certificate2 certificate)
+    {
+        RSA rsaPublicKey = null;
+        try
+        {
+            rsaPublicKey = certificate.GetRSAPublicKey();
+            return rsaPublicKey.KeySize;
+        }
+        finally
+        {
+            RsaUtils.RSADispose(rsaPublicKey);
+        }
     }
     #endregion
 
@@ -968,12 +999,12 @@ public class CertificateFactory
         // enforce recommended keysize unless lower value is enforced.
         if (keySize < 1024)
         {
-            keySize = defaultKeySize;
+            keySize = DefaultKeySize;
         }
 
         if (keySize % 1024 != 0)
         {
-            throw new ArgumentNullException("keySize", "KeySize must be a multiple of 1024.");
+            throw new ArgumentNullException(nameof(keySize), "KeySize must be a multiple of 1024.");
         }
 
         // enforce minimum lifetime.
@@ -995,7 +1026,7 @@ public class CertificateFactory
         {
             if (subjectNameEntries == null)
             {
-                throw new ArgumentNullException("applicationName", "Must specify a applicationName or a subjectName.");
+                throw new ArgumentNullException(nameof(applicationName), "Must specify a applicationName or a subjectName.");
             }
 
             // use the common name as the application name.
@@ -1011,7 +1042,7 @@ public class CertificateFactory
 
         if (String.IsNullOrEmpty(applicationName))
         {
-            throw new ArgumentNullException("applicationName", "Must specify a applicationName or a subjectName.");
+            throw new ArgumentNullException(nameof(applicationName), "Must specify a applicationName or a subjectName.");
         }
 
         // remove special characters from name.
@@ -1387,6 +1418,7 @@ public class CertificateFactory
     #endregion
 
     private static Dictionary<string, X509Certificate2> m_certificates = new Dictionary<string, X509Certificate2>();
+    private static object m_certificatesLock = new object();
     private static List<X509Certificate2> m_temporaryKeyContainers = new List<X509Certificate2>();
 }
 

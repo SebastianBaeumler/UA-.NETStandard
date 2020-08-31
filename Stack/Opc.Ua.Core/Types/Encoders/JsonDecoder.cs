@@ -12,16 +12,16 @@
 
 using System;
 using System.Collections.Generic;
-using System.Text;
-using System.Xml;
 using System.Globalization;
 using System.IO;
+using System.Text;
+using System.Xml;
 using Newtonsoft.Json;
 
 namespace Opc.Ua
 {
     /// <summary>
-    /// Reads objects from a XML stream.
+    /// Reads objects from a JSON stream.
     /// </summary>
     public class JsonDecoder : IDecoder, IDisposable
     {
@@ -33,12 +33,23 @@ namespace Opc.Ua
         private ushort[] m_namespaceMappings;
         private ushort[] m_serverMappings;
         private uint m_nestingLevel;
+        // JSON encoded value of: “9999-12-31T23:59:59Z”
+        private DateTime m_dateTimeMaxJsonValue = new DateTime((long)3155378975990000000);
+        private enum JTokenNullObject
+        {
+            Undefined = 0,
+            Object = 1,
+            Array = 2
+        };
         #endregion
 
         #region Constructors
         public JsonDecoder(string json, ServiceMessageContext context)
         {
-            if (context == null) throw new ArgumentNullException("context");
+            if (context == null)
+            {
+                throw new ArgumentNullException(nameof(context));
+            }
             Initialize();
 
             m_context = context;
@@ -76,8 +87,8 @@ namespace Opc.Ua
         /// </summary>
         public static IEncodeable DecodeSessionLessMessage(byte[] buffer, ServiceMessageContext context)
         {
-            if (buffer == null) throw new ArgumentNullException("buffer");
-            if (context == null) throw new ArgumentNullException("context");
+            if (buffer == null) throw new ArgumentNullException(nameof(buffer));
+            if (context == null) throw new ArgumentNullException(nameof(context));
 
             JsonDecoder decoder = new JsonDecoder(UTF8Encoding.UTF8.GetString(buffer), context);
 
@@ -85,9 +96,7 @@ namespace Opc.Ua
             {
                 // decode the actual message.
                 SessionLessServiceMessage message = new SessionLessServiceMessage();
-
                 message.Decode(decoder);
-
                 return message.Message;
             }
             finally
@@ -109,7 +118,10 @@ namespace Opc.Ua
         /// </summary>
         public static IEncodeable DecodeMessage(ArraySegment<byte> buffer, System.Type expectedType, ServiceMessageContext context)
         {
-            if (context == null) throw new ArgumentNullException("context");
+            if (context == null)
+            {
+                throw new ArgumentNullException(nameof(context));
+            }
 
             // check that the max message size was not exceeded.
             if (context.MaxMessageSize > 0 && context.MaxMessageSize < buffer.Count)
@@ -208,7 +220,10 @@ namespace Opc.Ua
         {
             if (checkEof && m_reader.TokenType != JsonToken.EndObject)
             {
-                while (m_reader.Read() && m_reader.TokenType != JsonToken.EndObject) ;
+                while (m_reader.Read() && m_reader.TokenType != JsonToken.EndObject)
+                {
+                    ;
+                }
             }
 
             m_reader.Close();
@@ -223,30 +238,39 @@ namespace Opc.Ua
                 switch (m_reader.TokenType)
                 {
                     case JsonToken.Comment:
-                        {
-                            break;
-                        }
+                    {
+                        break;
+                    }
 
+                    case JsonToken.Null:
+                    {
+                        elements.Add(JTokenNullObject.Array);
+                        break;
+                    }
+                    case JsonToken.Date:
                     case JsonToken.Boolean:
                     case JsonToken.Integer:
                     case JsonToken.Float:
                     case JsonToken.String:
-                        {
-                            elements.Add(m_reader.Value);
-                            break;
-                        }
+                    {
+                        elements.Add(m_reader.Value);
+                        break;
+                    }
 
                     case JsonToken.StartArray:
-                        {
-                            elements.Add(ReadArray());
-                            break;
-                        }
+                    {
+                        elements.Add(ReadArray());
+                        break;
+                    }
 
                     case JsonToken.StartObject:
-                        {
-                            elements.Add(ReadObject());
-                            break;
-                        }
+                    {
+                        elements.Add(ReadObject());
+                        break;
+                    }
+
+                    default:
+                        break;
                 }
             }
 
@@ -268,38 +292,41 @@ namespace Opc.Ua
                         switch (m_reader.TokenType)
                         {
                             case JsonToken.Comment:
-                                {
-                                    break;
-                                }
+                            {
+                                break;
+                            }
 
                             case JsonToken.Null:
-                            case JsonToken.Date:
-                                {
-                                    fields[name] = m_reader.Value;
-                                    break;
-                                }
+                            {
+                                fields[name] = JTokenNullObject.Object;
+                                break;
+                            }
 
+                            case JsonToken.Date:
                             case JsonToken.Bytes:
                             case JsonToken.Boolean:
                             case JsonToken.Integer:
                             case JsonToken.Float:
                             case JsonToken.String:
-                                {
-                                    fields[name] = m_reader.Value;
-                                    break;
-                                }
+                            {
+                                fields[name] = m_reader.Value;
+                                break;
+                            }
 
                             case JsonToken.StartArray:
-                                {
-                                    fields[name] = ReadArray();
-                                    break;
-                                }
+                            {
+                                fields[name] = ReadArray();
+                                break;
+                            }
 
                             case JsonToken.StartObject:
-                                {
-                                    fields[name] = ReadObject();
-                                    break;
-                                }
+                            {
+                                fields[name] = ReadObject();
+                                break;
+                            }
+
+                            default:
+                                break;
                         }
                     }
                 }
@@ -345,18 +372,12 @@ namespace Opc.Ua
         /// <summary>
         /// The type of encoding being used.
         /// </summary>
-        public EncodingType EncodingType
-        {
-            get { return EncodingType.Json; }
-        }
+        public EncodingType EncodingType => EncodingType.Json;
 
         /// <summary>
         /// The message context associated with the decoder.
         /// </summary>
-        public ServiceMessageContext Context
-        {
-            get { return m_context; }
-        }
+        public ServiceMessageContext Context => m_context;
 
         /// <summary>
         /// Pushes a namespace onto the namespace stack.
@@ -568,7 +589,7 @@ namespace Opc.Ua
                 var text = token as string;
                 uint number = 0;
 
-                if (text == null || !UInt32.TryParse(text, out number))
+                if (text == null || !UInt32.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out number))
                 {
                     return 0;
                 }
@@ -603,7 +624,7 @@ namespace Opc.Ua
                 var text = token as string;
                 long number = 0;
 
-                if (text == null || !Int64.TryParse(text, out number))
+                if (text == null || !Int64.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out number))
                 {
                     return 0;
                 }
@@ -638,7 +659,9 @@ namespace Opc.Ua
                 var text = token as string;
                 ulong number = 0;
 
-                if (text == null || !UInt64.TryParse(text, out number))
+                if (text == null || !UInt64.TryParse(text,
+                    NumberStyles.Integer,
+                    CultureInfo.InvariantCulture, out number))
                 {
                     return 0;
                 }
@@ -672,11 +695,25 @@ namespace Opc.Ua
             {
                 var text = token as string;
                 float number = 0;
-
-                if (text == null || !Single.TryParse(text, out number))
+                if (text == null || !Single.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out number))
                 {
-                    var integer = token as long?;
+                    if (text != null)
+                    {
+                        if (String.Compare(text, "Infinity", StringComparison.OrdinalIgnoreCase) == 0)
+                        {
+                            return Single.PositiveInfinity;
+                        }
+                        else if (String.Compare(text, "-Infinity", StringComparison.OrdinalIgnoreCase) == 0)
+                        {
+                            return Single.NegativeInfinity;
+                        }
+                        else if (String.Compare(text, "NaN", StringComparison.OrdinalIgnoreCase) == 0)
+                        {
+                            return Single.NaN;
+                        }
+                    }
 
+                    var integer = token as long?;
                     if (integer == null)
                     {
                         return 0;
@@ -688,12 +725,13 @@ namespace Opc.Ua
                 return number;
             }
 
-            if (value < Single.MinValue || value > Single.MaxValue)
+            float floatValue = (float)value;
+            if (floatValue >= Single.MinValue && floatValue <= Single.MaxValue)
             {
-                return 0;
+                return (float)value;
             }
 
-            return (float)value;
+            return 0;
         }
 
         /// <summary>
@@ -715,8 +753,24 @@ namespace Opc.Ua
                 var text = token as string;
                 double number = 0;
 
-                if (text == null || !Double.TryParse(text, out number))
+                if (text == null || !Double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out number))
                 {
+                    if (text != null)
+                    {
+                        if (String.Compare(text, "Infinity", StringComparison.OrdinalIgnoreCase) == 0)
+                        {
+                            return Double.PositiveInfinity;
+                        }
+                        else if (String.Compare(text, "-Infinity", StringComparison.OrdinalIgnoreCase) == 0)
+                        {
+                            return Double.NegativeInfinity;
+                        }
+                        else if (String.Compare(text, "NaN", StringComparison.OrdinalIgnoreCase) == 0)
+                        {
+                            return Double.NaN;
+                        }
+                    }
+
                     var integer = token as long?;
 
                     if (integer == null)
@@ -773,17 +827,16 @@ namespace Opc.Ua
             }
 
             var value = token as DateTime?;
-
             if (value != null)
             {
-                return value.Value;
+                return value.Value >= m_dateTimeMaxJsonValue ? DateTime.MaxValue : value.Value;
             }
 
             var text = token as string;
-
             if (text != null)
             {
-                return XmlConvert.ToDateTime(text, XmlDateTimeSerializationMode.Utc);
+                var result = XmlConvert.ToDateTime(text, XmlDateTimeSerializationMode.Utc);
+                return result >= m_dateTimeMaxJsonValue ? DateTime.MaxValue : result;
             }
 
             return DateTime.MinValue;
@@ -823,11 +876,15 @@ namespace Opc.Ua
                 return null;
             }
 
-            var value = token as string;
-
-            if (value == null)
+            if (token is JTokenNullObject)
             {
                 return null;
+            }
+
+            var value = token as string;
+            if (value == null)
+            {
+                return new byte[0];
             }
 
             var bytes = Convert.FromBase64String(value);
@@ -839,6 +896,7 @@ namespace Opc.Ua
 
             return bytes;
         }
+
 
         /// <summary>
         /// Reads an XmlElement from the stream.
@@ -866,8 +924,8 @@ namespace Opc.Ua
                 XmlDocument document = new XmlDocument();
                 string xmlString = new UTF8Encoding().GetString(bytes, 0, bytes.Length);
 
-                using (XmlReader reader = XmlReader.Create(new StringReader(xmlString), new XmlReaderSettings()
-                    { DtdProcessing = System.Xml.DtdProcessing.Prohibit }))
+                using (XmlReader reader = XmlReader.Create(new StringReader(xmlString),
+                    new XmlReaderSettings() { DtdProcessing = System.Xml.DtdProcessing.Prohibit }))
                 {
                     document.Load(reader);
                 }
@@ -887,17 +945,66 @@ namespace Opc.Ua
 
             if (!ReadField(fieldName, out token))
             {
-                return null;
+                return NodeId.Null;
             }
 
-            var value = token as string;
+            var value = token as Dictionary<string, object>;
 
             if (value == null)
             {
-                return null;
+                return NodeId.Null;
             }
 
-            return NodeId.Parse(value);
+            IdType idType = IdType.Numeric;
+            ushort namespaceIndex = 0;
+
+            try
+            {
+                m_stack.Push(value);
+
+                if (value.ContainsKey("IdType"))
+                {
+                    idType = (IdType)ReadInt32("IdType");
+                }
+
+                if (value.ContainsKey("Namespace"))
+                {
+                    namespaceIndex = ReadUInt16("Namespace");
+                }
+
+                if (value.ContainsKey("Id"))
+                {
+                    switch (idType)
+                    {
+                        case IdType.Numeric:
+                        default:
+                        {
+                            return new NodeId(ReadUInt32("Id"), namespaceIndex);
+                        }
+
+                        case IdType.Opaque:
+                        {
+                            return new NodeId(ReadByteString("Id"), namespaceIndex);
+                        }
+
+                        case IdType.String:
+                        {
+                            return new NodeId(ReadString("Id"), namespaceIndex);
+                        }
+
+                        case IdType.Guid:
+                        {
+                            return new NodeId(ReadGuid("Id"), namespaceIndex);
+                        }
+
+                    }
+                }
+                return DefaultNodeId(idType, namespaceIndex);
+            }
+            finally
+            {
+                m_stack.Pop();
+            }
         }
 
         /// <summary>
@@ -909,18 +1016,89 @@ namespace Opc.Ua
 
             if (!ReadField(fieldName, out token))
             {
-                return null;
+                return ExpandedNodeId.Null;
             }
 
-            var value = token as string;
+            var value = token as Dictionary<string, object>;
 
             if (value == null)
             {
-                return null;
+                return ExpandedNodeId.Null;
             }
 
-            return ExpandedNodeId.Parse(value);
+            IdType idType = IdType.Numeric;
+            ushort namespaceIndex = 0;
+            string namespaceUri = null;
+            uint serverIndex = 0;
+
+            try
+            {
+                m_stack.Push(value);
+
+                if (value.ContainsKey("IdType"))
+                {
+                    idType = (IdType)ReadInt32("IdType");
+                }
+
+                object namespaceToken = null;
+
+                if (ReadField("Namespace", out namespaceToken))
+                {
+                    var index = namespaceToken as long?;
+
+                    if (index == null)
+                    {
+                        namespaceUri = namespaceToken as string;
+                    }
+                    else
+                    {
+                        if (index.Value >= 0 || index.Value < UInt16.MaxValue)
+                        {
+                            namespaceIndex = (ushort)index.Value;
+                        }
+                    }
+                }
+
+                if (value.ContainsKey("ServerUri"))
+                {
+                    serverIndex = ReadUInt32("ServerUri");
+                }
+
+                if (value.ContainsKey("Id"))
+                {
+                    switch (idType)
+                    {
+                        case IdType.Numeric:
+                        default:
+                        {
+                            return new ExpandedNodeId(ReadUInt32("Id"), namespaceIndex, namespaceUri, serverIndex);
+                        }
+
+                        case IdType.Opaque:
+                        {
+                            return new ExpandedNodeId(ReadByteString("Id"), namespaceIndex, namespaceUri, serverIndex);
+                        }
+
+                        case IdType.String:
+                        {
+                            return new ExpandedNodeId(ReadString("Id"), namespaceIndex, namespaceUri, serverIndex);
+                        }
+
+                        case IdType.Guid:
+                        {
+                            return new ExpandedNodeId(ReadGuid("Id"), namespaceIndex, namespaceUri, serverIndex);
+                        }
+                    }
+                }
+
+                return new ExpandedNodeId(DefaultNodeId(idType, namespaceIndex), namespaceUri, serverIndex);
+            }
+            finally
+            {
+                m_stack.Pop();
+            }
         }
+
 
         /// <summary>
         /// Reads an StatusCode from the stream.
@@ -950,7 +1128,7 @@ namespace Opc.Ua
             }
 
             // check the nesting level for avoiding a stack overflow.
-            if (m_nestingLevel > m_context.MaxEncodingNestingLevels) 
+            if (m_nestingLevel > m_context.MaxEncodingNestingLevels)
             {
                 throw ServiceResultException.Create(
                     StatusCodes.BadEncodingLimitsExceeded,
@@ -958,7 +1136,8 @@ namespace Opc.Ua
                     m_context.MaxEncodingNestingLevels);
             }
 
-            try {
+            try
+            {
                 m_nestingLevel++;
                 m_stack.Push(value);
 
@@ -1017,18 +1196,36 @@ namespace Opc.Ua
 
             if (!ReadField(fieldName, out token))
             {
-                return null;
+                return QualifiedName.Null;
             }
 
             var value = token as Dictionary<string, object>;
 
             if (value == null)
             {
-                return null;
+                return QualifiedName.Null;
             }
 
-            var name = ReadString("Name");
-            var namespaceIndex = ReadUInt16("Uri");
+            UInt16 namespaceIndex = 0;
+            string name = null;
+            try
+            {
+                m_stack.Push(value);
+
+                if (value.ContainsKey("Name"))
+                {
+                    name = ReadString("Name");
+                }
+
+                if (value.ContainsKey("Uri"))
+                {
+                    namespaceIndex = ReadUInt16("Uri");
+                }
+            }
+            finally
+            {
+                m_stack.Pop();
+            }
 
             return new QualifiedName(name, namespaceIndex);
         }
@@ -1042,7 +1239,7 @@ namespace Opc.Ua
 
             if (!ReadField(fieldName, out token))
             {
-                return null;
+                return LocalizedText.Null;
             }
 
             string locale = null;
@@ -1059,7 +1256,7 @@ namespace Opc.Ua
                     return new LocalizedText(text);
                 }
 
-                return null;
+                return LocalizedText.Null;
             }
 
             try
@@ -1168,14 +1365,15 @@ namespace Opc.Ua
             }
 
             // check the nesting level for avoiding a stack overflow.
-            if (m_nestingLevel > m_context.MaxEncodingNestingLevels) 
+            if (m_nestingLevel > m_context.MaxEncodingNestingLevels)
             {
                 throw ServiceResultException.Create(
                     StatusCodes.BadEncodingLimitsExceeded,
                     "Maximum nesting level of {0} was exceeded",
                     m_context.MaxEncodingNestingLevels);
             }
-            try {
+            try
+            {
                 m_nestingLevel++;
                 m_stack.Push(value);
 
@@ -1188,22 +1386,25 @@ namespace Opc.Ua
                     return Variant.Null;
                 }
 
+                Variant array;
                 if (token is Array)
                 {
-                    var array = ReadVariantBody("Body", type);
-                    var dimensions = ReadInt32Array("Dimensions");
-
-                    if (array.Value is Array && dimensions != null && dimensions.Count > 1)
-                    {
-                        array = new Variant(new Matrix((Array)array.Value, type, dimensions.ToArray()));
-                    }
-
-                    return array;
+                    array = ReadVariantBody("Body", type);
+                }
+                else if (token is List<object>)
+                {
+                    array = ReadVariantArrayBody("Body", type);
                 }
                 else
                 {
                     return ReadVariantBody("Body", type);
                 }
+                var dimensions = ReadInt32Array("Dimensions");
+                if (array.Value is Array && dimensions != null && dimensions.Count > 1)
+                {
+                    array = new Variant(new Matrix((Array)array.Value, type, dimensions.ToArray()));
+                }
+                return array;
             }
             finally
             {
@@ -1298,45 +1499,66 @@ namespace Opc.Ua
         /// </summary>
         public ExtensionObject ReadExtensionObject(string fieldName)
         {
+            var extension = ExtensionObject.Null;
             object token = null;
 
             if (!ReadField(fieldName, out token))
             {
-                return null;
+                return extension;
             }
 
             var value = token as Dictionary<string, object>;
 
             if (value == null)
             {
-                return null;
+                return extension;
             }
 
             try
             {
                 m_stack.Push(value);
 
-                NodeId typeId = ReadNodeId("TypeId");
-
-                ExpandedNodeId absoluteId = NodeId.ToExpandedNodeId(typeId, m_context.NamespaceUris);
+                ExpandedNodeId typeId = ReadExpandedNodeId("TypeId");
+                ExpandedNodeId absoluteId =
+                    typeId.IsAbsolute ?
+                    typeId :
+                    NodeId.ToExpandedNodeId(typeId.InnerNodeId, m_context.NamespaceUris);
 
                 if (!NodeId.IsNull(typeId) && NodeId.IsNull(absoluteId))
                 {
                     Utils.Trace("Cannot de-serialized extension objects if the NamespaceUri is not in the NamespaceTable: Type = {0}", typeId);
                 }
+                else
+                {
+                    typeId = absoluteId;
+                }
 
                 byte encoding = ReadByte("Encoding");
 
-                if (encoding == 1)
+                if (encoding == (byte)ExtensionObjectEncoding.Binary)
                 {
                     var bytes = ReadByteString("Body");
-                    return new ExtensionObject(typeId, bytes);
+                    return new ExtensionObject(typeId, bytes ?? new byte[0]);
                 }
 
-                if (encoding == 2)
+                if (encoding == (byte)ExtensionObjectEncoding.Xml)
                 {
                     var xml = ReadXmlElement("Body");
+                    if (xml == null)
+                    {
+                        return extension;
+                    }
                     return new ExtensionObject(typeId, xml);
+                }
+
+                if (encoding == (byte)ExtensionObjectEncoding.Json)
+                {
+                    var json = ReadString("Body");
+                    if (String.IsNullOrEmpty(json))
+                    {
+                        return extension;
+                    }
+                    return new ExtensionObject(typeId, json);
                 }
 
                 Type systemType = m_context.Factory.GetSystemType(typeId);
@@ -1344,6 +1566,11 @@ namespace Opc.Ua
                 if (systemType != null)
                 {
                     var encodeable = ReadEncodeable("Body", systemType);
+                    if (encodeable == null)
+                    {
+                        return extension;
+                    }
+
                     return new ExtensionObject(typeId, encodeable);
                 }
 
@@ -1369,7 +1596,10 @@ namespace Opc.Ua
             string fieldName,
             System.Type systemType)
         {
-            if (systemType == null) throw new ArgumentNullException("systemType");
+            if (systemType == null)
+            {
+                throw new ArgumentNullException(nameof(systemType));
+            }
 
             object token = null;
 
@@ -1417,7 +1647,10 @@ namespace Opc.Ua
         /// </summary>
         public Enum ReadEnumerated(string fieldName, System.Type enumType)
         {
-            if (enumType == null) throw new ArgumentNullException("enumType");
+            if (enumType == null)
+            {
+                throw new ArgumentNullException(nameof(enumType));
+            }
 
             return (Enum)Enum.ToObject(enumType, ReadInt32(fieldName));
         }
@@ -2213,7 +2446,10 @@ namespace Opc.Ua
         /// </summary>
         public Array ReadEncodeableArray(string fieldName, System.Type systemType)
         {
-            if (systemType == null) throw new ArgumentNullException("systemType");
+            if (systemType == null)
+            {
+                throw new ArgumentNullException(nameof(systemType));
+            }
 
             List<object> token = null;
 
@@ -2246,7 +2482,10 @@ namespace Opc.Ua
         /// </summary>
         public Array ReadEnumeratedArray(string fieldName, System.Type enumType)
         {
-            if (enumType == null) throw new ArgumentNullException("enumType");
+            if (enumType == null)
+            {
+                throw new ArgumentNullException(nameof(enumType));
+            }
 
             List<object> token = null;
 
@@ -2276,6 +2515,32 @@ namespace Opc.Ua
         #endregion
 
         #region Private Methods
+        private NodeId DefaultNodeId(IdType idType, ushort namespaceIndex)
+        {
+            switch (idType)
+            {
+                case IdType.Numeric:
+                default:
+                {
+                    return new NodeId(0U, namespaceIndex);
+                }
+
+                case IdType.Opaque:
+                {
+                    return new NodeId(new byte[0], namespaceIndex);
+                }
+
+                case IdType.String:
+                {
+                    return new NodeId("", namespaceIndex);
+                }
+
+                case IdType.Guid:
+                {
+                    return new NodeId(Guid.Empty, namespaceIndex);
+                }
+            }
+        }
         #endregion
     }
 }

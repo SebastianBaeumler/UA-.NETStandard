@@ -52,6 +52,11 @@ namespace Opc.Ua.Bindings
             get { return m_quotas.MessageContext; }
         }
 
+        public ChannelToken CurrentToken
+        {
+            get { return null; }
+        }
+
         public int OperationTimeout
         {
             get { return m_operationTimeout; }
@@ -63,6 +68,19 @@ namespace Opc.Ua.Bindings
             TransportChannelSettings settings)
         {
             SaveSettings(url, settings);
+        }
+
+        /// <summary>
+        /// Initializes a secure channel with the endpoint identified by the URL.
+        /// </summary>
+        /// <param name="connection">The connection to use.</param>
+        /// <param name="settings">The settings to use when creating the channel.</param>
+        /// <exception cref="ServiceResultException">Thrown if any communication error occurs.</exception>
+        public void Initialize(
+            ITransportWaitingConnection connection,
+            TransportChannelSettings settings)
+        {
+            SaveSettings(connection.EndpointUrl, settings);
         }
 
         public void Open()
@@ -114,7 +132,7 @@ namespace Opc.Ua.Bindings
             catch (Exception ex)
             {
                 Utils.Trace("Exception creating HTTPS Client: " + ex.Message);
-                throw ex;
+                throw;
             }
         }
 
@@ -189,7 +207,7 @@ namespace Opc.Ua.Bindings
             AsyncResult result2 = result as AsyncResult;
             if (result2 == null)
             {
-                throw new ArgumentException("Invalid result object passed.", "result");
+                throw new ArgumentException("Invalid result object passed.", nameof(result));
             }
 
             try
@@ -222,6 +240,11 @@ namespace Opc.Ua.Bindings
         public void Reconnect()
         {
             Utils.Trace("HttpsTransportChannel RECONNECT: Reconnecting to {0}.", m_url);
+        }
+
+        void ITransportChannel.Reconnect(ITransportWaitingConnection connection)
+        {
+            throw new NotImplementedException();
         }
 
         public IAsyncResult BeginReconnect(AsyncCallback callback, object callbackData)

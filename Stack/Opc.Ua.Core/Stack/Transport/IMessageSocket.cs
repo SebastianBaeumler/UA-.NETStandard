@@ -12,6 +12,7 @@
 
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Opc.Ua.Bindings
@@ -135,9 +136,18 @@ namespace Opc.Ua.Bindings
         int Handle { get; }
 
         /// <summary>
+        /// Returns the features implemented by the message socket.
+        /// </summary>
+        TransportChannelFeatures MessageSocketFeatures { get; }
+
+        /// <summary>
         /// Connects to an endpoint.
         /// </summary>
-        Task<bool> BeginConnect(Uri endpointUrl, EventHandler<IMessageSocketAsyncEventArgs> callback, object state);
+        Task<bool> BeginConnect(
+            Uri endpointUrl,
+            EventHandler<IMessageSocketAsyncEventArgs> callback,
+            object state,
+            CancellationToken cts);
 
         /// <summary>
         /// Forcefully closes the socket.
